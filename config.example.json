@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "bulbs": [
+    {"id": "bulb1", "name": "Luz 1", "ip": "192.0.2.10"},
+    {"id": "bulb2", "name": "Luz 2", "ip": "192.0.2.11"}
+  ],
+  "startup_scene": null,
+  "accent": "Violeta",
+  "palette": "Medianoche",
+  "scale": 100
+}

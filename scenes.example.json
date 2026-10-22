@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "scenes": [
+    {
+      "name": "Personalizado",
+      "lights": {
+        "bulb1": {"power": true, "brightness": 65, "rgb": [145, 45, 255], "kelvin": null},
+        "bulb2": {"power": true, "brightness": 55, "rgb": [0, 210, 255], "kelvin": null}
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.cache/
+
+# Personal device addresses, scenes, settings and diagnostic logs
+/data/
+config.json
+scenes.json
+ips.json
+bulbs.json
+devices.json
+*.local.*
+*.private.*
+*.log
+*.log.*
+
+# Credentials and local environment variables; sanitized examples may be shared
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Test, build and packaging output
+tests/.tmp-*/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+build/
+dist/
+*.egg-info/
+*.tmp
+*.bak
+*.swp
+*~
+
+# Machine-specific editor, assistant and OS files
+.idea/
+.vscode/
+.codex/
+.agents/
+.DS_Store
+Thumbs.db
+desktop.ini
