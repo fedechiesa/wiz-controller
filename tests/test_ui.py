@@ -13,6 +13,7 @@ from wiz_controller.models import AppConfig, LightSetting, Scene
 from wiz_controller.runtime import Result
 from wiz_controller.storage import Storage
 from wiz_controller.ui import SceneEditor, WizController
+from wiz_controller.desktop_actions import DesktopAction
 
 
 class FakeRuntime:
@@ -34,12 +35,15 @@ class DesktopTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = TestDirectory()
         cls.worker = FakeRuntime()
+        cls.autostart_patch = patch("wiz_controller.ui.WindowsAutostart.enabled", return_value=False)
+        cls.autostart_patch.start()
         cls.app = WizController(Storage(cls.temp.name), network_enabled=False, runtime=cls.worker)
         cls.app.update()
 
     @classmethod
     def tearDownClass(cls):
         cls.app.close_app()
+        cls.autostart_patch.stop()
         cls.temp.cleanup()
 
     def setUp(self):
@@ -49,10 +53,13 @@ class DesktopTests(unittest.TestCase):
         app.cancel_sliders()
         self.worker.calls.clear()
         app.inflight.clear()
+        app.active_requests.clear()
         app.waiting.clear()
         app.states.clear()
         app.available.clear()
         app.errors.clear()
+        app._toggle_pending = False
+        app.desktop_errors.clear()
         app.custom_scenes.clear()
         app.config_data = AppConfig()
         app.show_page("Dashboard")
@@ -201,3 +208,59 @@ class DesktopTests(unittest.TestCase):
         editor = SceneEditor(self.app, scene, copy=True)
         editor.save()
         self.assertEqual(self.app.custom_scenes["Captura"], scene)
+
+    def test_desktop_scene_and_power_use_existing_runtime(self):
+        self.app.integration_requests.put(DesktopAction("scene", "Gaming"))
+        self.pump()
+        self.assertEqual([call[3] for call in self.worker.calls], ["scene", "scene"])
+
+    def test_same_scene_from_tray_does_not_queue_duplicate_active_commands(self):
+        self.app.apply_scene("Gaming")
+        self.app.handle_desktop_action(DesktopAction("scene", "Gaming"))
+        self.assertFalse(self.app.waiting)
+        self.assertEqual(len(self.worker.calls), 2)
+
+    def test_explicit_scene_cancels_a_pending_toggle(self):
+        self.app.toggle_lights()
+        self.app.apply_scene("Gaming")
+        self.assertFalse(self.app._toggle_pending)
+
+    def test_toggle_reads_both_lights_before_sending_and_ignores_repeat(self):
+        self.app.handle_desktop_action(DesktopAction("toggle"))
+        self.app.handle_desktop_action(DesktopAction("toggle"))
+        self.assertEqual([call[3] for call in self.worker.calls], ["refresh", "refresh"])
+        self.respond(0, state=BulbState(False, 70, (0, 210, 255), None))
+        self.assertEqual(len(self.worker.calls), 2)
+        self.respond(1, state=BulbState(False, 70, (0, 210, 255), None))
+        self.assertEqual([call[3] for call in self.worker.calls[2:]], ["on", "on"])
+
+    def test_toggle_never_guesses_when_one_bulb_is_offline(self):
+        self.app.toggle_lights()
+        self.respond(0, state=BulbState(True, 70, (0, 210, 255), None))
+        self.respond(1, error="Timeout", reachable=False)
+        self.assertEqual(len(self.worker.calls), 2)
+        self.assertFalse(self.app._toggle_pending)
+
+    def test_x_hides_only_with_a_ready_tray(self):
+        from types import SimpleNamespace
+        desktop = SimpleNamespace(tray_ready=True)
+        self.app.desktop = desktop
+        try:
+            self.app.on_window_close()
+            self.app.update()
+            self.assertEqual(self.app.state(), "withdrawn")
+            self.assertFalse(self.app.closing)
+            self.app.handle_desktop_action(DesktopAction("show"))
+            self.app.update()
+            self.assertEqual(self.app.state(), "normal")
+            desktop.tray_ready = False
+            with patch.object(self.app, "close_app") as close:
+                self.app.on_window_close()
+                close.assert_called_once()
+        finally:
+            self.app.desktop = None
+
+    def test_quit_always_exits_even_with_tray_preference(self):
+        with patch.object(self.app, "close_app") as close:
+            self.app.handle_desktop_action(DesktopAction("quit"))
+            close.assert_called_once()

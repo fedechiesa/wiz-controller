@@ -1,2 +1,4 @@
 pywizlight==0.6.6
 customtkinter==5.2.2
+pystray==0.19.5
+Pillow==13.0.0

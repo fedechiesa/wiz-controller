@@ -6,15 +6,36 @@ from pathlib import Path
 import tempfile
 
 from .models import AppConfig, Scene, builtin_scenes
+from .paths import legacy_data_directory, user_data_directory
 
 LOGGER = logging.getLogger(__name__)
 
 
 class Storage:
     def __init__(self, directory=None):
-        self.directory = Path(directory) if directory else Path(__file__).resolve().parent.parent / "data"
+        self.directory = Path(directory) if directory else user_data_directory()
         self.warnings = []
         self.protected = set()
+
+    def migrate_legacy(self, source=None):
+        source = Path(source) if source is not None else legacy_data_directory()
+        if source.resolve() == self.directory.resolve():
+            return []
+        migrated = []
+        for filename, decoder in (("config.json", AppConfig.from_dict), ("scenes.json", self._decode_scenes)):
+            target, original = self.directory / filename, source / filename
+            if target.exists() or not original.is_file():
+                continue
+            try:
+                value = json.loads(original.read_text(encoding="utf-8-sig"))
+                decoder(value)
+                self._write(filename, value)
+                migrated.append(filename)
+                LOGGER.info("Migrated %s from %s (source preserved)", filename, source)
+            except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+                LOGGER.warning("Migration failed for %s: %s", filename, error)
+                self.warnings.append(f"No se pudo migrar {filename}. El original se conserva en {source}.")
+        return migrated
 
     def _read(self, filename, fallback, decode):
         path = self.directory / filename
@@ -53,15 +74,17 @@ class Storage:
         self._write("config.json", config.to_dict())
 
     def load_scenes(self):
-        def decode(value):
-            if value["version"] != 1 or not isinstance(value["scenes"], list):
-                raise ValueError("Archivo de escenas inválido.")
-            scenes = [Scene.from_dict(scene) for scene in value["scenes"]]
-            names = [scene.name.casefold() for scene in scenes]
-            if len(names) != len(set(names)) or set(names) & {name.casefold() for name in builtin_scenes()}:
-                raise ValueError("Nombres de escenas duplicados o reservados.")
-            return {scene.name: scene for scene in scenes}
-        return self._read("scenes.json", dict, decode)
+        return self._read("scenes.json", dict, self._decode_scenes)
+
+    @staticmethod
+    def _decode_scenes(value):
+        if value["version"] != 1 or not isinstance(value["scenes"], list):
+            raise ValueError("Archivo de escenas inválido.")
+        scenes = [Scene.from_dict(scene) for scene in value["scenes"]]
+        names = [scene.name.casefold() for scene in scenes]
+        if len(names) != len(set(names)) or set(names) & {name.casefold() for name in builtin_scenes()}:
+            raise ValueError("Nombres de escenas duplicados o reservados.")
+        return {scene.name: scene for scene in scenes}
 
     def save_scenes(self, scenes):
         self._write("scenes.json", {"version": 1, "scenes": [scene.to_dict() for scene in scenes.values()]})

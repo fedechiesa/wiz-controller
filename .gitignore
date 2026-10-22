@@ -42,6 +42,8 @@ htmlcov/
 coverage.xml
 build/
 dist/
+*.exe
+*.zip
 *.egg-info/
 *.tmp
 *.bak

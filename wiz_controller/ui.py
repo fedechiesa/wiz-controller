@@ -11,6 +11,9 @@ import customtkinter as ctk
 from customtkinter.windows.widgets.scaling.scaling_tracker import ScalingTracker
 
 from .integrations import WindowsAutostart
+from .desktop import DesktopServices
+from .desktop_actions import DesktopAction
+from .paths import resource_path
 from .models import AppConfig, BulbConfig, LightSetting, Scene, builtin_scenes
 from .runtime import LightingRuntime
 from .storage import Storage
@@ -202,7 +205,8 @@ class BulbCard(ctk.CTkFrame):
 
 
 class WizController(ctk.CTk):
-    def __init__(self, storage=None, *, network_enabled=True, runtime=None):
+    def __init__(self, storage=None, *, network_enabled=True, runtime=None,
+                 desktop_enabled=None, instance=None, background=False):
         ctk.set_appearance_mode("dark")
         super().__init__()
         self.storage = storage or Storage()
@@ -213,22 +217,39 @@ class WizController(ctk.CTk):
         self.closing = False
         self.states, self.available, self.errors = {}, {}, {}
         self.inflight, self.waiting, self.actions, self.futures = {}, {}, {}, {}
+        self.active_requests = {}
         self.slider_jobs, self.levels = {}, {"global": 70, "bulb1": 70, "bulb2": 70}
         self.sequence = 0
         self.global_color = (145, 45, 255)
         self.active_scene = None
         self.cards = {}
         self.integration_requests = Queue()
+        self.instance = instance
+        self.desktop = None
+        self._toggle_pending = False
+        self._background_requested = background
+        self._background_deadline = time.monotonic() + 6
+        self.desktop_message = "Integraciones de escritorio desactivadas en esta sesión de prueba."
+        self.desktop_errors = []
         self._timers = set()
         self._view_changing = False
         self._dialogs = set()
-        self.title("WiZ Controller 2.0 · Gaming & Streaming")
+        self.title("WiZ Controller 2.1 · Desktop Gaming Edition")
         self.geometry("1220x900")
         self.minsize(1050, 720)
-        self.protocol("WM_DELETE_WINDOW", self.close_app)
+        self.protocol("WM_DELETE_WINDOW", self.on_window_close)
+        if sys.platform == "win32":
+            try:
+                self.iconbitmap(str(resource_path("assets/wiz-controller.ico")))
+            except tk.TclError:
+                LOGGER.warning("Window icon unavailable")
         self._apply_appearance()
         self._build_shell()
         self.show_page("Dashboard")
+        enable_desktop = network_enabled if desktop_enabled is None else desktop_enabled
+        if enable_desktop:
+            self.desktop = DesktopServices(self.integration_requests)
+            self.desktop.configure(self.config_data)
         self.schedule(80, self.poll_results)
         if network_enabled:
             self.schedule(300, self.start_network)
@@ -277,7 +298,7 @@ class WizController(ctk.CTk):
         rail.grid_propagate(False)
         label(rail, "WiZ", 38, TEXT, True).pack(anchor="w", padx=25, pady=(30, 0))
         label(rail, "CONTROL CENTER", 10, self.accent, True).pack(anchor="w", padx=26)
-        label(rail, "GAMING & STREAMING", 9, MUTED).pack(anchor="w", padx=26, pady=(2, 35))
+        label(rail, "DESKTOP GAMING", 9, MUTED).pack(anchor="w", padx=26, pady=(2, 35))
         self.nav = {}
         for text, prefix in (("Dashboard", "◈"), ("Escenas", "▦"), ("Settings", "⚙"), ("Integraciones", "＋")):
             self.nav[text] = self.button(rail, f"{prefix}   {text}", lambda page=text: self.show_page(page),
@@ -287,7 +308,9 @@ class WizController(ctk.CTk):
         bottom.pack(side="bottom", fill="x", padx=24, pady=26)
         label(bottom, "●  100% LOCAL", 11, CYAN, True).pack(anchor="w")
         label(bottom, "Tu setup. Tu luz.\nSin cuentas ni nube.", 11, MUTED, justify="left").pack(anchor="w", pady=(7, 20))
-        label(bottom, "WiZ Controller   /   2.0", 10, MUTED).pack(anchor="w")
+        self.button(bottom, "A la bandeja", self.minimize_to_tray, secondary=True, width=140, height=30).pack(pady=(0, 7))
+        self.button(bottom, "Salir completamente", self.close_app, secondary=True, width=140, height=30).pack(pady=(0, 12))
+        label(bottom, "WiZ Controller   /   2.1", 10, MUTED).pack(anchor="w")
 
         content = ctk.CTkFrame(self, fg_color="transparent")
         content.grid(row=0, column=1, sticky="nsew", padx=(28, 24), pady=(24, 17))
@@ -491,13 +514,17 @@ class WizController(ctk.CTk):
             self.notify("Modo de prueba de interfaz: no se envían órdenes a las bombillas.")
             return
         if action != "refresh":
+            self._toggle_pending = False
             self.cancel_sliders(key)
             if action != "scene":
                 self.active_scene = None
         if key in self.inflight:
             if action == "refresh":
                 return
-            self.waiting[key] = merge_request(self.waiting.get(key), action, kwargs)
+            candidate = merge_request(self.waiting.get(key), action, kwargs)
+            if self.waiting.get(key) == candidate or (key not in self.waiting and self.active_requests.get(key) == candidate):
+                return
+            self.waiting[key] = candidate
             self.notify("Ajuste pendiente · se aplicará la última selección al terminar la operación actual.")
             return
         self._begin(key, action, kwargs)
@@ -507,12 +534,15 @@ class WizController(ctk.CTk):
         self.sequence += 1
         self.inflight[key] = (self.sequence, bulb.ip)
         self.actions[key] = action
+        self.active_requests[key] = (action, kwargs)
         self.errors.pop(key, None)
         self.futures[key] = self.runtime.submit(key, bulb.ip, self.sequence, action, **kwargs)
         self.notify(f"{'Consultando' if action == 'refresh' else 'Aplicando ajuste a'} {bulb.name}…")
         self.update_indicators()
 
     def poll_results(self):
+        if self.instance and self.instance.consume_restore():
+            self.restore_window()
         if self.runtime:
             while True:
                 try:
@@ -523,6 +553,7 @@ class WizController(ctk.CTk):
                     continue
                 key = result.bulb_id
                 self.inflight.pop(key, None)
+                self.active_requests.pop(key, None)
                 self.futures.pop(key, None)
                 self.available[key] = result.reachable
                 if result.state is not None:
@@ -541,16 +572,93 @@ class WizController(ctk.CTk):
                     else:
                         self.notify(f"Lectura confirmada · {time.strftime('%H:%M:%S')} · ajustes finalizados.")
                 self.update_indicators()
+        if self._toggle_pending and not self.inflight:
+            self._toggle_pending = False
+            if all(self.available.get(bulb.id) and bulb.id in self.states for bulb in self.config_data.bulbs):
+                action = "off" if any(self.states[bulb.id].power for bulb in self.config_data.bulbs) else "on"
+                self.request_all(action)
+            else:
+                self.notify("No se puede alternar: primero deben responder las dos bombillas. Usá Encender/Apagar para una orden explícita.", error=True)
         while True:
             try:
-                scene = self.integration_requests.get_nowait()
+                action = self.integration_requests.get_nowait()
             except Empty:
                 break
-            if scene in self.all_scenes():
-                self.apply_scene(scene)
-            else:
-                self.notify(f"La integración solicitó una escena desconocida: {scene}", error=True)
+            self.handle_desktop_action(action)
+            if self.closing:
+                return
+        if self._background_requested:
+            if self.desktop and self.desktop.tray_ready:
+                self._background_requested = False
+                self.minimize_to_tray()
+            elif time.monotonic() >= self._background_deadline:
+                self._background_requested = False
+                self.restore_window()
+                self.notify("No se pudo iniciar en bandeja; el panel queda abierto para que puedas salir o revisar Settings.", error=True)
         self.schedule(80, self.poll_results)
+
+    def handle_desktop_action(self, action):
+        if self.closing:
+            return
+        if isinstance(action, str):
+            action = DesktopAction("scene", action)  # Existing integration port remains compatible.
+        if not isinstance(action, DesktopAction):
+            return
+        if action.kind == "show":
+            self.restore_window()
+        elif action.kind == "quit":
+            self.close_app()
+        elif action.kind in {"on", "off"}:
+            self.request_all(action.kind)
+        elif action.kind == "toggle":
+            self.toggle_lights()
+        elif action.kind == "scene":
+            if action.value in self.all_scenes():
+                self.apply_scene(action.value)
+            else:
+                self.notify(f"Escena desconocida: {action.value}", error=True)
+        elif action.kind in {"error", "status"}:
+            if action.kind == "error":
+                self.desktop_errors.append(action.value)
+                self._background_requested = False
+                self.restore_window()
+            self.desktop_message = "\n".join(self.desktop_errors[-3:]) if self.desktop_errors else action.value
+            self.notify(self.desktop_message, error=bool(self.desktop_errors))
+
+    def toggle_lights(self):
+        if self._toggle_pending or self.inflight or self.waiting or self.slider_jobs:
+            self.notify("Esperá a que termine la operación actual antes de alternar las luces.")
+            return
+        if self.runtime is None:
+            self.notify("No hay conexión de red en esta sesión de prueba.")
+            return
+        self._toggle_pending = True
+        self.request_all("refresh")
+
+    def restore_window(self):
+        if not self.closing:
+            self._background_requested = False
+            self.deiconify()
+            self.state("normal")
+            self.lift()
+            self.focus_force()
+            for dialog in self._dialogs:
+                dialog.deiconify()
+                dialog.lift()
+
+    def minimize_to_tray(self):
+        if self.desktop and self.desktop.tray_ready:
+            for dialog in self._dialogs:
+                dialog.withdraw()
+            self.withdraw()
+        else:
+            self.notify("La bandeja todavía no está disponible. El panel seguirá abierto; podés usar Salir completamente.", error=True)
+
+    def on_window_close(self):
+        if self.config_data.close_to_tray and self.config_data.tray_enabled and self.desktop and self.desktop.tray_ready:
+            self.minimize_to_tray()
+        else:
+            self.close_app()
 
     def update_indicators(self):
         count = sum(value is True for value in self.available.values())
@@ -691,8 +799,33 @@ class WizController(ctk.CTk):
         label(panel, autostart_error or "Se guarda para tu usuario de Windows. Podés desactivarlo desde aquí.", 11, MUTED,
               wraplength=700).grid(row=6, column=0, sticky="w", padx=24, pady=(0, 12))
         self.button(panel, "Guardar configuración", self.save_settings, width=210).grid(row=7, column=0, sticky="w", padx=24, pady=(0, 22))
+        daily = ctk.CTkFrame(self.body, fg_color=self.panel, corner_radius=18)
+        daily.grid(row=1, column=0, sticky="ew", pady=(16, 0))
+        daily.grid_columnconfigure(1, weight=1)
+        label(daily, "Escritorio y gaming", 20, bold=True).grid(row=0, column=0, columnspan=2, sticky="w", padx=24, pady=(18, 12))
+        self.tray_var = tk.BooleanVar(value=self.config_data.tray_enabled)
+        self.close_to_tray_var = tk.BooleanVar(value=self.config_data.close_to_tray)
+        self.hotkeys_var = tk.BooleanVar(value=self.config_data.hotkeys_enabled)
+        for row, (text, variable) in enumerate([
+            ("Mostrar ícono en la bandeja del sistema", self.tray_var),
+            ("La X minimiza a la bandeja (Salir siempre cierra)", self.close_to_tray_var),
+            ("Activar atajos globales de Windows", self.hotkeys_var),
+        ], 1):
+            ctk.CTkCheckBox(daily, text=text, variable=variable, fg_color=self.accent, text_color=TEXT,
+                            font=("Segoe UI", 12)).grid(row=row, column=0, columnspan=2, sticky="w", padx=24, pady=7)
+        self.hotkey_entries = {}
+        for row, (name, combination) in enumerate(self.config_data.hotkeys.items(), 4):
+            label(daily, name, 12, MUTED).grid(row=row, column=0, sticky="w", padx=24, pady=5)
+            entry = ctk.CTkEntry(daily, height=34, fg_color=self.bg, border_color=self.border)
+            entry.insert(0, combination)
+            entry.grid(row=row, column=1, sticky="ew", padx=(12, 24), pady=5)
+            self.hotkey_entries[name] = entry
+        label(daily, "Formato: Ctrl+Alt+F9 · Ctrl+Shift+G. F12 está reservada por Windows.\nLos conflictos se informan al registrar; los demás atajos siguen disponibles.",
+              11, MUTED, wraplength=700, justify="left").grid(row=8, column=0, columnspan=2, sticky="w", padx=24, pady=(10, 5))
+        label(daily, self.desktop_message, 11, MUTED, wraplength=700, justify="left").grid(row=9, column=0, columnspan=2, sticky="w", padx=24, pady=8)
+        self.button(daily, "Guardar configuración", self.save_settings, width=210).grid(row=10, column=0, columnspan=2, sticky="w", padx=24, pady=(5, 20))
         label(self.body, f"ARCHIVOS LOCALES\n{self.storage.directory}\nconfig.json  ·  scenes.json  ·  controller.log", 12, MUTED,
-              anchor="w", justify="left", wraplength=750).grid(row=1, column=0, sticky="ew", padx=4, pady=20)
+              anchor="w", justify="left", wraplength=750).grid(row=2, column=0, sticky="ew", padx=4, pady=20)
 
     def setting_menu(self, parent, row, col, title, values, value):
         label(parent, title, 10, MUTED, True).grid(row=row, column=col, sticky="w", padx=(0, 12), pady=(0, 5))
@@ -708,14 +841,16 @@ class WizController(ctk.CTk):
             config = AppConfig(
                 bulbs=[BulbConfig(key, entries[0].get(), entries[1].get().strip()) for key, entries in self.settings_bulbs.items()],
                 startup_scene=None if self.startup_choice.get() == "Sin escena" else self.startup_choice.get(),
-                accent=self.accent_choice.get(), palette=self.palette_choice.get(), scale=int(self.scale_choice.get().rstrip("%")))
+                accent=self.accent_choice.get(), palette=self.palette_choice.get(), scale=int(self.scale_choice.get().rstrip("%")),
+                tray_enabled=self.tray_var.get(), close_to_tray=self.close_to_tray_var.get(),
+                hotkeys_enabled=self.hotkeys_var.get(), hotkeys={name: entry.get().strip() for name, entry in self.hotkey_entries.items()})
             autostart = self.autostart_var.get()
             self.storage.save_config(config)
         except (ValueError, OSError) as error:
             self.notify(str(error), error=True)
             return
         autostart_error = None
-        if autostart != self.autostart_original:
+        if autostart != self.autostart_original or autostart:
             try:
                 WindowsAutostart.set_enabled(autostart)
             except OSError as error:
@@ -728,10 +863,15 @@ class WizController(ctk.CTk):
         self.inflight.clear()
         self.waiting.clear()
         self.futures.clear()
+        self.active_requests.clear()
         self.states.clear()
         self.available.clear()
         self.errors.clear()
+        self._toggle_pending = False
         self.config_data = config
+        self.desktop_errors.clear()
+        if self.desktop:
+            self.desktop.configure(config)
         self._view_changing = True
         for child in self.winfo_children():
             child.destroy()
@@ -743,12 +883,12 @@ class WizController(ctk.CTk):
         self.notify(autostart_error or "Configuración guardada. Se actualizarán los estados por LAN.", error=bool(autostart_error))
 
     def build_integrations(self):
-        label(self.body, "La iluminación funciona de forma independiente. Estas conexiones quedan para la próxima fase.",
+        label(self.body, "Bandeja y atajos se configuran en Settings. Las integraciones de streaming quedan para otra fase.",
               13, MUTED, anchor="w", wraplength=750).grid(row=0, column=0, sticky="ew", pady=(0, 18))
         for index, (title, detail) in enumerate([
             ("OBS Studio", "Pendiente · obs-websocket y activación por estado de streaming."),
-            ("Atajos globales", "Pendiente · activar escenas aunque el panel esté en segundo plano."),
-            ("Bandeja del sistema", "Pendiente · minimizar y controlar luces desde el área de notificación."),
+            ("Atajos globales", "Disponible en Windows · RegisterHotKey sin hooks. Activación y combinaciones en Settings."),
+            ("Bandeja del sistema", "Disponible en Windows · abrir, encender, apagar, aplicar escenas o salir desde el ícono."),
             ("Eventos del stream", "Pendiente · adaptadores para eventos y alertas de tu plataforma."),
         ]):
             card = ctk.CTkFrame(self.body, fg_color=self.panel, corner_radius=14)
@@ -760,6 +900,8 @@ class WizController(ctk.CTk):
         if self.closing:
             return
         self.closing = True
+        if self.desktop:
+            self.desktop.stop()
         for dialog in list(self._dialogs):
             dialog.destroy()
         for timer in list(self._timers):

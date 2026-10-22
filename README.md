@@ -1,159 +1,130 @@
-﻿# WiZ Controller 2.0 · Gaming & Streaming Edition
+# WiZ Controller 2.1 · Desktop Gaming Edition
 
-Centro de iluminación de escritorio para dos bombillas WiZ, con Python 3.13 y CustomTkinter. Control por red local, sin nube, cuentas, bases de datos ni servicios de fondo.
+Aplicación Windows para controlar dos bombillas WiZ por red local desde un dashboard oscuro, la bandeja del sistema o atajos globales. Desarrollada con Python 3.13, CustomTkinter y pywizlight, sin nube, cuentas ni bases de datos.
 
-Incluye dashboard con controles globales e individuales, escenas por bombilla, editor de escenas JSON, reconexión automática, preferencias visuales e inicio opcional con Windows. Las operaciones de red se ejecutan fuera del hilo de la interfaz.
+![Dashboard de WiZ Controller 2.1](docs/dashboard.png)
 
-![Dashboard de WiZ Controller](docs/dashboard.png)
+La captura usa IP ficticias. **La versión 2.1 fue validada manualmente en Windows:** ambas bombillas conectan y responden; encendido, apagado, brillo, colores y escenas funcionan; el ejecutable abre correctamente y los atajos globales fueron probados. El usuario confirmó estabilidad de la interfaz y del control de iluminación. Las pruebas en juegos específicos, después de iniciar sesión y en otros equipos no forman parte de esa confirmación.
 
-La captura usa direcciones ficticias y muestra el panel antes de consultar dispositivos. No contiene datos de una red personal.
+## Funcionalidades
 
-El funcionamiento fue probado físicamente por el usuario con dos bombillas WiZ: encendido, apagado, colores, brillo y escenas. La suite automatizada usa mocks para poder ejecutarse sin dispositivos físicos.
+- Encendido, apagado, brillo y color globales o independientes por bombilla; nombres editables y estado confirmado por lectura.
+- Gaming, Streaming, Relax, Estudio y Noche; creación, edición y eliminación de escenas personales por canal.
+- Bandeja real: abrir, encender/apagar ambas luces, aplicar Gaming/Streaming/Relax y salir completamente.
+- Atajos globales configurables mediante `RegisterHotKey`, sin hooks, historial de teclado ni permisos de administrador.
+- Una sola instancia por sesión de Windows: abrir otra vez restaura el panel existente.
+- Preferencias, escenas y logs persistentes en `%LOCALAPPDATA%\WiZController`, con migración conservadora desde 2.0.
+- Ejecutable sin consola generado mediante PyInstaller, con ícono propio y recursos incluidos.
+- Red asíncrona, timeout, debounce, reconexión y una operación pendiente por canal. No se aumenta el polling periódico de 12 segundos.
 
 ## Requisitos
 
-- Windows y Python 3.13 con Tcl/Tk (incluido en la instalación estándar de Python para Windows).
-- Dos bombillas WiZ compatibles con control local y, para los blancos cálido/neutro, temperatura ajustable.
-- PC y bombillas en la misma red, con acceso al puerto UDP 38899 y sus direcciones IPv4 disponibles.
-- Acceso a Internet para instalar las dependencias; el control de iluminación funciona por LAN.
+Windows 10/11 y dos bombillas WiZ con control local habilitado. PC y bombillas deben estar en la misma red, con comunicación UDP 38899. Los blancos cálido y neutro requieren temperatura ajustable. Las IP deben configurarse manualmente; se recomienda reserva DHCP en el router.
 
-## Instalar y ejecutar en Windows
+Para ejecutar el código o compilar: Python 3.13 de 64 bits con Tcl/Tk y acceso a Internet para instalar dependencias. El paquete generado incluye Python y funciona sin instalarlo en el equipo destino. La iluminación solo necesita la LAN.
 
-Descargá o cloná el repositorio y abrí PowerShell en la carpeta que contiene `main.py`:
+## Instalar y ejecutar desde Python
+
+En PowerShell:
 
 ```powershell
+git clone https://github.com/fedechiesa/wiz-controller.git
+cd wiz-controller
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Para ejecutar:
-
-```powershell
 .\.venv\Scripts\python.exe main.py
 ```
 
-En la primera ejecución, abrí **Settings**, ingresá las IP de tus bombillas y guardá. Los valores públicos son ficticios y deben reemplazarse; no se descubren automáticamente las IP. No hace falta activar el entorno. Si ya tenés `.venv`, podés reutilizarlo. Para abrir sin consola:
+Si ya tenés `.venv`, reutilizalo e instalá las dependencias actualizadas. Para abrir sin consola:
 
 ```powershell
 .\.venv\Scripts\pythonw.exe main.py
 ```
 
-Dependencias directas: `pywizlight==0.6.6` y `customtkinter==5.2.2`, declaradas en `requirements.txt`.
+En una instalación nueva, ingresá las IP de tus luces en **Settings** y guardá. Los valores públicos `192.0.2.10` y `192.0.2.11` son ficticios. Una instalación 2.0 con `data/config.json` válido se importa automáticamente si aún no existe configuración persistente; el original queda intacto.
 
-La PC y las bombillas deben estar en la misma red y permitir comunicación local WiZ mediante UDP 38899. Si Windows consulta por el firewall, habilitá Python en la red privada correspondiente. Una reserva DHCP en el router ayuda a mantener las IP estables.
+Dependencias directas: `pywizlight==0.6.6`, `customtkinter==5.2.2`, `pystray==0.19.5` y `Pillow==13.0.0`. PyInstaller se instala únicamente para compilar, desde `requirements-build.txt`.
 
-## Control diario
+## Uso diario y atajos
 
-- **Dashboard:** encender/apagar ambas luces, brillo y color globales. Cada tarjeta tiene encendido, apagado, brillo, selector RGB, colores rápidos, estado de conexión y vista previa aproximada del último estado leído.
-- **Nombres:** editá el título de una tarjeta y presioná Enter o salí del campo. También podés cambiarlos en Settings.
-- **Escenas:** Gaming (violeta/cian), Streaming (magenta/azul), Relax (2700 K), Estudio (4000 K) y Noche (azul/violeta tenue).
-- **Personalizadas:** creá una combinación distinta por bombilla, guardala, editála o eliminála desde Escenas. Podés indicar encendido, brillo y RGB o blanco por canal. Guardar una escena no la aplica: usá **Aplicar** para enviar los ajustes.
-- **Guardar estado leído:** captura la última lectura de ambas luces cuando están disponibles y no hay ajustes pendientes. No inventa colores ni brillo si faltan datos.
-- **Reconectar:** consulta las dos bombillas sin reiniciar la aplicación. También se consultan automáticamente cada 12 segundos, si no tienen otra operación en curso.
+La bandeja está habilitada inicialmente. Con **La X minimiza a la bandeja** activado, la X oculta la ventana únicamente cuando el ícono está listo. **Salir completamente**, en el panel o el menú de bandeja, siempre termina la aplicación; no envía apagado a las luces. El botón de minimizar estándar sigue usando la barra de tareas.
 
-Cambiar brillo o color enciende la luz, igual que en la versión original. Encender conserva los ajustes que tenga la bombilla. Una escena con un canal apagado envía apagado a ese canal; sus valores guardados de brillo/color no se transmiten mientras está apagado.
+Los atajos vienen desactivados para evitar conflictos con tu setup. Activá **Atajos globales de Windows** en Settings, editá las combinaciones si querés y guardá:
 
-## Configuración local
+| Acción | Combinación inicial |
+| --- | --- |
+| Gaming | Ctrl + Alt + F9 |
+| Streaming | Ctrl + Alt + F10 |
+| Relax | Ctrl + Alt + F11 |
+| Alternar ambas luces | Ctrl + Alt + F8 |
 
-Settings permite editar IP, nombre, escena de inicio, paleta Medianoche/Grafito, acento Violeta/Cian/Magenta y escala 100/110/125%. La escena de inicio está desactivada por defecto para que abrir el panel no cambie las luces.
+F12 no se usa porque está reservada por Windows para depuración. Se aceptan Ctrl/Alt/Shift más A–Z, 0–9 o F1–F11, con al menos Ctrl o Alt. Las combinaciones repetidas se rechazan; un conflicto con otro programa se informa sin deshabilitar los otros atajos. Se usa `MOD_NOREPEAT` para evitar repetición al mantener una tecla. [Documentación de RegisterHotKey](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey).
 
-El código público, los tests y `config.example.json` usan únicamente direcciones de documentación:
+Alternar consulta primero ambas luces: si alguna está encendida, apaga las dos; si ambas están apagadas, las enciende. Si una no responde, no adivina su estado. Acciones repetidas durante una operación se descartan o conservan como una única selección pendiente; una orden explícita cancela un alternado pendiente.
 
-| Canal | Nombre | IP ficticia |
-| --- | --- | --- |
-| bulb1 | Luz 1 | 192.0.2.10 |
-| bulb2 | Luz 2 | 192.0.2.11 |
+Los juegos en pantalla completa exclusiva, con anticheat, a un nivel de privilegios mayor o que reserven la misma combinación pueden impedir su funcionamiento. No se instalan hooks ni se eleva la aplicación para eludir esas restricciones. Probá los atajos en tus juegos antes de depender de ellos.
 
-Estas direcciones no corresponden a bombillas reales. Guardá tus IP exclusivamente en `data/config.json`, desde Settings o editando una copia del ejemplo. No publiques ese archivo ni los logs.
+[Guía de uso diario, inicio con Windows y recuperación de la bandeja](docs/DAILY_USE.md).
 
-Los cambios se guardan en `data/config.json`. Las escenas del usuario se guardan en `data/scenes.json`. La carpeta se resuelve respecto del proyecto, independientemente de la carpeta desde la que ejecutes el programa. Se escribe al guardar desde la interfaz; la ausencia de un archivo usa valores iniciales.
+## Generar y ejecutar WiZController.exe
 
-Para configurar manualmente, cerrá el programa y copiá los ejemplos:
+En Windows, desde el proyecto:
 
 ```powershell
-New-Item -ItemType Directory -Path data -Force
-if (-not (Test-Path data/config.json)) {
-    Copy-Item config.example.json data/config.json
-}
-if (-not (Test-Path data/scenes.json)) {
-    Copy-Item scenes.example.json data/scenes.json
-}
-notepad data/config.json
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
+.\dist\WiZController\WiZController.exe
 ```
 
-Los comandos conservan archivos existentes. Cambiá las IP ficticias por las de tus bombillas antes de ejecutar. El segundo ejemplo agrega una escena llamada Personalizado si aún no existe un archivo de escenas. También podés crearla desde la interfaz.
+El resultado es **`dist\WiZController\WiZController.exe`**, sin consola y con ícono propio. Distribuí **toda la carpeta `dist\WiZController`**, incluido `_internal`; el `.exe` no es un archivo autónomo. Esta estrategia evita la extracción temporal de un paquete de archivo único y favorece un inicio predecible de Tk y la bandeja. No se publican binarios automáticamente.
 
-Los identificadores `bulb1` y `bulb2` permanecen estables al cambiar nombres o IP, para que las escenas sigan apuntando al canal correcto. Se validan IP, nombres, brillo y colores antes de guardar. Las escrituras usan un archivo temporal y reemplazo atómico. Un JSON inválido se conserva: el panel avisa y bloquea su sobrescritura; corregilo o renombralo y volvé a abrir la aplicación.
+El build usa versiones fijadas y recursos explícitos. No recopila `data/`, configuraciones personales, ejemplos con IP reales ni directorios de desarrollo. El script verifica dependencias, ejecuta tests, genera los íconos y muestra el SHA-256 del ejecutable. [Guía de build y diagnóstico](docs/BUILD.md).
 
-**Inicio con Windows:** el checkbox de Settings registra únicamente esta aplicación para tu usuario en `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, con el Python del entorno y una ruta absoluta. Solo modifica esa entrada al cambiar la opción y guardar. Desmarcarla y guardar elimina la entrada. Si movés el proyecto o recreás el entorno, volvé a activar la opción. No se modifica OBS ni se requiere administrador.
+## Configuración y migración
 
-## Confirmación y errores
+La configuración se guarda en `%LOCALAPPDATA%\WiZController\config.json`, las escenas en `scenes.json` y el log rotativo en `controller.log`. El directorio no depende de la ubicación del ejecutable ni de dónde se ejecute. `config.example.json` y `scenes.example.json` son ejemplos sin información personal.
 
-Se conserva la comunicación original con `wizlight`, `PilotBuilder`, `turn_on`, `turn_off` y cierre de transporte. Después de una orden se consulta el estado. El panel confirma encendido, brillo y canales de color/temperatura informados; si difieren, muestra **Revisar ajuste**. `pywizlight` transforma RGB en canales RGB y blanco: la verificación usa los valores efectivamente transmitidos. Las capturas guardan esos canales nativos para evitar una segunda conversión.
+Al ejecutar desde Python se busca la configuración anterior en `data/` del proyecto; en modo empaquetado, en `data/` junto al ejecutable. Se copian solo `config.json` y `scenes.json` válidos que aún no existan en el destino, sin borrar originales ni reemplazar archivos existentes. Los logs anteriores permanecen en su ubicación original. No se importa nada desde `_internal` ni desde el directorio de trabajo por defecto.
 
-Cada fase de red tiene un timeout de 7 segundos. Una operación con envío y verificación puede durar más de 7 segundos. Se admite una segunda lectura para transiciones del firmware. La UI sigue disponible durante la espera.
+También podés importar una carpeta anterior explícitamente:
 
-Los sliders esperan 350 ms sin cambios antes de enviar. Hay como máximo una operación activa y una selección pendiente por bombilla; cambios repetidos reemplazan esa selección, conservando color y brillo cuando corresponde. Las dos bombillas operan en paralelo; las órdenes sobre una misma IP se serializan. Aplicar una escena cancela los sliders pendientes para evitar que la sobrescriban.
-
-Tkinter recibe resultados mediante una cola desde un único hilo asyncio. Ningún worker modifica widgets ni llama `after`. Al cambiar IP se cancelan las tareas anteriores y se descartan respuestas antiguas. Si una luz se desconecta se conserva su último estado marcado como tal, sin presentarlo como una lectura actual.
-
-El log local `data/controller.log` rota a los 500 KB con dos copias. Incluye fallos de red y excepciones de interfaz para diagnóstico.
-
-## Estructura
-
-```text
-main.py                        Entrada, logging y arranque
-wiz_controller/models.py       Configuración y escenas validadas
-wiz_controller/storage.py      Persistencia JSON local
-wiz_controller/lighting.py     Comandos pywizlight y lectura de confirmación
-wiz_controller/runtime.py      Hilo asyncio, serialización por IP y cola de resultados
-wiz_controller/ui.py           Dashboard, tarjetas, escenas y Settings
-wiz_controller/integrations.py Puerto de integración e inicio automático de Windows
-tests/                         Tests de lógica y de widgets con red simulada
-config.example.json            Ejemplo de configuración
-scenes.example.json            Ejemplo de escena por bombilla
-docs/dashboard.png              Captura del dashboard sin datos personales
-docs/VALIDATION.md              Resultados automatizados y validación física informada
+```powershell
+.\.venv\Scripts\python.exe main.py --migrate-from .\data
 ```
 
-Se mantiene CustomTkinter: permite el diseño oscuro, tarjetas y controles con las dependencias existentes. La previsualización usa dibujo estático de Tk, sin animaciones costosas. La ventana es desplazable para pantallas pequeñas; tamaño mínimo 1050×720. Las tarjetas se apilan al reducir el espacio disponible o aumentar la escala. Se incluye un ajuste de compatibilidad para limpiar callbacks de escala de menús destruidos en CustomTkinter 5.2.2.
+Una vez migrado, las modificaciones se guardan en el nuevo directorio. Editar el viejo `data/config.json` ya no cambia la configuración activa. Un JSON inválido se conserva y se informa; no se sobrescribe silenciosamente. Los nombres `bulb1` y `bulb2` identifican los canales aunque cambies nombre o IP.
 
-## Verificación
+Settings conserva las preferencias de apariencia, escena de inicio, bandeja, atajos e inicio con Windows. Esta última opción usa una sola entrada propia en `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Al guardar con la opción activa se actualiza a la ruta actual de Python o del ejecutable; al desactivarla se elimina esa entrada. No se requiere administrador ni se modifica OBS.
 
-Tests de lógica sin dispositivos físicos:
+## Tests y validación
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Los tests de escritorio se omiten por defecto. Para ejecutarlos con una sesión gráfica disponible:
+Para incluir widgets reales y API nativa en una sesión Windows de escritorio:
 
 ```powershell
 $env:WIZ_GUI_TESTS = '1'
+$env:WIZ_NATIVE_TESTS = '1'
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-Remove-Item Env:WIZ_GUI_TESTS
+Remove-Item Env:WIZ_GUI_TESTS, Env:WIZ_NATIVE_TESTS
 ```
 
-Arranque de la ventana sin comunicación con bombillas (cierra automáticamente):
+Los tests nativos muestran un ícono temporal y registran combinaciones de prueba Ctrl+Alt+Shift+F8–F11; las liberan al terminar. No envían órdenes a bombillas ni cambian el inicio automático. Una comprobación básica sin red:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py --smoke-test
-.\.venv\Scripts\python.exe -m compileall -q main.py wiz_controller tests
+.\.venv\Scripts\python.exe main.py --smoke-test --data-dir .\build\smoke
+.\.venv\Scripts\python.exe -m compileall -q main.py wiz_controller tests scripts
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-Las pruebas usan respuestas y errores simulados únicamente dentro de los tests. El dashboard normal consulta las IP configuradas y no muestra conexiones ficticias.
+[Resultados automatizados, validación manual de 2.1 y comprobaciones adicionales pendientes](docs/VALIDATION.md).
 
-## Integraciones y siguiente fase
+## Estructura y privacidad
 
-OBS, atajos globales, bandeja y eventos del stream están **pendientes**, claramente identificados en Integraciones. No hay botones que simulen conectarlos. `Integration` define el ciclo `start/stop`; futuros adaptadores pueden enviar nombres a `app.integration_requests`, una cola que Tk procesa y valida. Así no necesitan tocar widgets ni implementar nuevamente la iluminación.
+`lighting.py` conserva la comunicación WiZ existente. `runtime.py` ejecuta asyncio fuera de Tk; bandeja y teclado publican acciones en una cola consumida por la interfaz. `desktop.py` supervisa inicio, reconfiguración y cierre de esas integraciones. `paths.py`, `storage.py` e `instance.py` resuelven rutas persistentes, migración e instancia única.
 
-La próxima fase recomendada es agregar bandeja/atajos y después un adaptador optativo de obs-websocket con reconexión y selección explícita de escenas. Las pruebas con otros modelos y firmwares deben acompañar esos cambios. No se instala ni modifica OBS automáticamente.
+El repositorio contiene código, tests, recursos, ejemplos y documentación. `.gitignore` excluye `.venv/`, cachés, `data/`, logs, archivos de credenciales, `build/`, `dist/` y ejecutables. Revisá también capturas y cambios antes de publicar: `.gitignore` no elimina información pegada dentro de un archivo público.
 
-El inicio real tras entrar a Windows y las futuras integraciones requieren validación adicional. Los resultados y las comprobaciones están en [docs/VALIDATION.md](docs/VALIDATION.md).
-
-## Archivos públicos y privados
-
-Publicá el código, los tests, `requirements.txt`, este README, `.gitignore`, `.gitattributes`, los ejemplos JSON y `docs/`. La carpeta `data/` contiene las IP, preferencias, escenas personales y logs; queda fuera de Git junto con `.venv/`, cachés, archivos temporales y archivos de credenciales conocidos. Los ejemplos no requieren credenciales.
-
-Antes de compartir cambios, revisá `git status --short` y `git diff --cached`. Las reglas de `.gitignore` no ocultan información pegada dentro de código, documentación o capturas, ni eliminan archivos que ya estén versionados.
+OBS y eventos del stream quedan fuera de esta versión. La siguiente fase podrá incorporarlos mediante adaptadores, conservando como base la versión 2.1 validada.

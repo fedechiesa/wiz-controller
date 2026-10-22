@@ -7,5 +7,14 @@
   "startup_scene": null,
   "accent": "Violeta",
   "palette": "Medianoche",
-  "scale": 100
+  "scale": 100,
+  "tray_enabled": true,
+  "close_to_tray": true,
+  "hotkeys_enabled": false,
+  "hotkeys": {
+    "Gaming": "Ctrl+Alt+F9",
+    "Streaming": "Ctrl+Alt+F10",
+    "Relax": "Ctrl+Alt+F11",
+    "Alternar luces": "Ctrl+Alt+F8"
+  }
 }

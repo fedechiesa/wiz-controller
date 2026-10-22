@@ -8,6 +8,25 @@ from wiz_controller.runtime import LightingRuntime
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_close_cancels_pending_tasks_and_executes_cleanup(self):
+        started, cleaned = threading.Event(), threading.Event()
+        class Service:
+            async def execute(self, ip, action, **kwargs):
+                started.set()
+                try:
+                    await asyncio.sleep(60)
+                finally:
+                    cleaned.set()
+        worker = LightingRuntime(Service())
+        worker.submit("bulb1", "ip1", 1, "on")
+        worker.submit("bulb1", "ip1", 2, "off")
+        self.assertTrue(started.wait(1))
+        worker.close()
+        worker.close()
+        worker.thread.join(2)
+        self.assertFalse(worker.thread.is_alive())
+        self.assertTrue(cleaned.is_set())
+
     def test_same_ip_is_serialized_and_other_ip_runs_independently(self):
         class Service:
             active = Counter()

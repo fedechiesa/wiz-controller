@@ -2,6 +2,8 @@
 from dataclasses import asdict, dataclass, field
 from ipaddress import IPv4Address
 
+from .hotkeys import DEFAULT_HOTKEYS, validate_bindings
+
 
 def integer(value, minimum, maximum, label):
     if type(value) is not int or not minimum <= value <= maximum:
@@ -109,6 +111,10 @@ class AppConfig:
     accent: str = "Violeta"
     palette: str = "Medianoche"
     scale: int = 100
+    tray_enabled: bool = True
+    close_to_tray: bool = True
+    hotkeys_enabled: bool = False
+    hotkeys: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_HOTKEYS))
 
     def __post_init__(self):
         if len(self.bulbs) != 2 or {bulb.id for bulb in self.bulbs} != {"bulb1", "bulb2"}:
@@ -121,6 +127,9 @@ class AppConfig:
             raise ValueError("Acento inválido.")
         if self.palette not in ("Medianoche", "Grafito") or self.scale not in (100, 110, 125):
             raise ValueError("Preferencia de apariencia inválida.")
+        if any(type(value) is not bool for value in (self.tray_enabled, self.close_to_tray, self.hotkeys_enabled)):
+            raise ValueError("Las preferencias de bandeja y atajos deben ser verdaderas o falsas.")
+        validate_bindings(self.hotkeys)
 
     def to_dict(self):
         return {"version": 1, **asdict(self)}

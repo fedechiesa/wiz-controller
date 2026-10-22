@@ -1,80 +1,94 @@
-# Validación de WiZ Controller 2.0
+# Validación de WiZ Controller 2.1
 
-Fecha: 22 de octubre de 2026. Entorno: Windows, Python 3.13.3, CustomTkinter 5.2.2 y pywizlight 0.6.6.
+Fecha: 22 de octubre de 2026. Entorno: Windows 10 x64 (19045), Python 3.13.3, CustomTkinter 5.2.2, pywizlight 0.6.6, pystray 0.19.5, Pillow 13.0.0 y PyInstaller 6.22.3.
 
 ## Resultado automatizado
 
 | Verificación | Resultado |
 | --- | --- |
-| Tests de modelos, JSON, iluminación, runtime e inicio automático con mocks | 31 aprobados |
-| Tests de widgets Tk reales con worker de red simulado | 14 aprobados |
-| Total con `WIZ_GUI_TESTS=1` | 45 aprobados |
-| `main.py --smoke-test` | Ventana creada y cerrada sin enviar órdenes; salida 0 |
-| `compileall` sobre main, módulos y tests | Sin errores de sintaxis/importación durante las pruebas |
-| `pip check` | Sin incompatibilidades instaladas |
-| Archivos JSON de ejemplo | Deserializados y validados por los modelos |
-| Revisión visual del dashboard | Captura real de la ventana, sin estados físicos simulados |
+| Lógica, configuración, migración, adaptadores y runtime con mocks | 51 aprobados |
+| Widgets Tk reales con red simulada | 21 aprobados |
+| API nativa de Windows | 5 aprobados |
+| Total con `WIZ_GUI_TESTS=1` y `WIZ_NATIVE_TESTS=1` | **77 aprobados, sin omisiones** |
+| `compileall` | Sin errores |
+| `pip check` | Sin incompatibilidades |
+| `git diff --check` | Sin errores de espacios en los cambios |
+| Build de PyInstaller | Correcto; `dist/WiZController/WiZController.exe` |
+| Formato PE del ejecutable | Subsistema gráfico Windows, sin consola |
+| Prueba de escritorio desde Python | Bandeja lista, 4/4 atajos registrados, cierre limpio |
+| Prueba del ejecutable en Windows | Salida 0, `frozen: true`, bandeja lista, 4/4 atajos registrados, cierre limpio |
+| Paquete y bytecode propios | Sin configuración personal, logs, tests ni IP reales de las bombillas |
+| `lighting.py` | Idéntico byte a byte a la versión 2.0 publicada |
 
-Los mensajes de advertencia que aparecen en los tests de JSON corrupto, timeout y confirmación fallida son intencionales: esos tests verifican precisamente el manejo de errores.
+Las excepciones de timeout, conflictos y fallas de bandeja que aparecen en el log de tests son intencionales. Se prueban las rutas de recuperación, no indican errores de la suite.
 
-## Revisión para publicación
+El ejecutable generado tiene SHA-256:
 
-- Repositorio Git propio inicializado en la carpeta del proyecto, rama `main`, sin commits ni remoto configurado. El índice queda vacío para revisión antes del primer commit.
-- Se revisaron los 23 archivos propuestos para versionar. No se detectaron credenciales, claves privadas, tokens de servicios, rutas de usuario ni IP privadas en esos archivos mediante búsqueda de patrones y revisión del contenido.
-- Las direcciones reales se conservaron en `data/config.json`, excluido de Git. Código, ejemplos, tests y captura usan direcciones ficticias del bloque de documentación `192.0.2.0/24`.
-- Se regeneró y revisó visualmente `docs/dashboard.png`; no tiene metadatos de texto o EXIF.
-- Se comprobó `git check-ignore` para entorno virtual, cachés, configuración personal, logs rotados, variables de entorno, claves, temporales de tests y artefactos de compilación. Los ejemplos JSON y la captura permanecen publicables.
-- Se verificó mediante SHA-256 que `main.py`, iluminación, runtime, interfaz, persistencia e integraciones no cambiaron durante esta preparación. En `models.py` solo se anonimizaron los valores iniciales de IP y se añadió un comentario; los tests se ajustaron a direcciones ficticias.
-- Se volvieron a ejecutar los 45 tests, la apertura sin red, `compileall` y `pip check`. No se enviaron órdenes a las bombillas durante esta revisión.
+```text
+F77D9DEE2DEAF3C448C0309CF4EF59A576EDA8A4D030052FCA9C0A69E5BE0FF6
+```
 
-La búsqueda de patrones complementa la revisión; antes de agregar archivos nuevos conviene revisar también su contenido y cualquier imagen, porque `.gitignore` no inspecciona datos dentro de archivos públicos.
+La publicación del código de 2.1 excluye los binarios y los resultados locales de compilación y diagnóstico, que quedan en carpetas ignoradas por Git.
 
-## Cobertura relevante
+## Archivos modificados y creados
 
-- Los valores públicos y los tests usan IP ficticias; las IP reales se guardan en `data/config.json`, excluido de Git, y se editan desde Settings.
-- Validación de IP duplicadas/incorrectas, brillo, RGB, temperatura y escenas incompletas.
-- Creación, edición, renombrado y eliminación de escenas; referencia de escena de inicio actualizada desde la UI.
-- Persistencia local, protección de JSON inválido y conservación del archivo anterior ante un fallo de reemplazo.
-- Payloads construidos con el `PilotBuilder` real: encendido sin alterar ajustes, apagado, brillo, RGB/blanco y temperatura.
-- Verificación de la transformación RGB a canales nativos, preservación de esos canales al capturar escenas y rechazo de respuestas incompatibles o incompletas.
-- Timeout, cancelación y cierre del transporte; segunda lectura ante una transición de firmware.
-- Serialización de operaciones para una misma IP y concurrencia entre las dos IP.
-- Cola de resultados con errores diferenciados de éxito, consumida desde Tk.
-- Debounce: 80 movimientos de un slider producen una sola orden con el último valor.
-- Una selección pendiente por canal; conservación del color al cambiar brillo o pulsar Encender.
-- Escenas que cancelan sliders pendientes y mantienen colores independientes por canal.
-- Errores sin falso encendido confirmado, recuperación al reconectar y descarte de respuestas de una IP anterior.
-- Guardado de Settings, validación antes de reemplazar configuración y renderizado de todas las pantallas.
-- Cambio de escala después de navegar, limpieza de callbacks de menús y tarjetas apiladas en una ventana estrecha al 125%.
-- Registro de inicio automático probado exclusivamente con `winreg` simulado. No se habilitó el inicio automático real durante las pruebas.
+| Grupo | Archivos |
+| --- | --- |
+| Entrada y configuración modificadas | `main.py`, `config.example.json`, `requirements.txt`, `wiz_controller/models.py`, `wiz_controller/storage.py`, `wiz_controller/integrations.py` |
+| Interfaz modificada | `wiz_controller/ui.py`, `docs/dashboard.png` |
+| Integraciones nuevas | `wiz_controller/desktop.py`, `desktop_actions.py`, `hotkeys.py`, `instance.py`, `paths.py`, `tray.py` (todos dentro de `wiz_controller/`) |
+| Empaquetado nuevo | `WiZController.spec`, `requirements-build.txt`, `scripts/build.ps1`, `scripts/generate_icon.py`, `assets/wiz-controller.ico`, `assets/wiz-controller.png` |
+| Tests modificados | `tests/test_runtime.py`, `tests/test_ui.py` |
+| Tests nuevos | `tests/test_desktop.py`, `tests/test_paths_migration.py`, `tests/test_windows_native.py` |
+| Documentación y reglas modificadas | `README.md`, `docs/VALIDATION.md`, `.gitignore`, `.gitattributes` |
+| Guías nuevas | `docs/BUILD.md`, `docs/DAILY_USE.md` |
 
-## Validación física informada
+Dependencias de ejecución agregadas: pystray y Pillow. PyInstaller y sus auxiliares/versiones fijadas se declaran por separado en `requirements-build.txt`.
 
-El usuario confirmó pruebas físicas satisfactorias con las dos bombillas WiZ: encendido, apagado, colores, brillo y escenas. Esta confirmación corresponde a su setup; no implica certificación para todos los modelos o firmwares.
+## Qué se probó
 
-En la revisión para publicación no se enviaron nuevas órdenes a dispositivos: se ejecutaron tests con mocks y pruebas de apertura sin red. El inicio real de Windows y las futuras integraciones siguen requiriendo validación adicional.
+- Todos los casos previos de encendido, apagado, brillo, RGB/blanco, temperatura, confirmación, timeout y captura de escenas.
+- Acciones del menú de bandeja y teclado en la cola de Tk, sin acceso a widgets desde trabajadores.
+- Supresión de acciones repetidas y de escenas idénticas en curso. Cancelación de un alternado pendiente al elegir una orden explícita.
+- Alternado basado en lectura de las dos bombillas, sin asumir el estado de una desconectada.
+- Creación y cierre real de un ícono de bandeja Windows; fallo deliberado de creación de ventana y liberación del hilo de setup de pystray.
+- Registro nativo de cuatro combinaciones, conflicto al intentar registrarlas de nuevo, entrega de acciones mediante `WM_HOTKEY` y registro exitoso después de liberarlas.
+- Mutex y evento de instancia única: detección de una segunda instancia, señal de restauración y liberación de handles. También se lanzó otro proceso Python para verificar el caso entre procesos.
+- Cierre de Tk frente a bandeja lista/no disponible y salida completa independiente de la preferencia de la X.
+- Cierre de asyncio con cancelación de tareas activas y pendientes; ejecución de su limpieza y terminación del hilo.
+- Persistencia de preferencias, rechazo de combinaciones repetidas/F12 y compatibilidad con JSON de 2.0 sin los nuevos campos.
+- Directorios en modo Python y congelado, rutas de recursos, comando de inicio de Windows en ambos modos y quoting de rutas con espacios. Las modificaciones de registro se prueban con mocks.
+- Migración de configuración y escenas válidas sin borrar originales ni sobreescribir destinos; fuentes inválidas, fuentes ausentes y separación entre recursos y datos persistentes.
+- UI al cambiar IP, conservar referencias de escenas, cambiar escala y apilar tarjetas en una ventana estrecha.
+- Arranque real del `.exe` con `--smoke-test --desktop-check --data-dir` en una carpeta aislada. Se verificaron recursos empaquetados, bandeja, atajos registrados y cierre del supervisor sin comunicación con bombillas.
+- Captura actualizada del dashboard con IP ficticias y revisión visual del ícono propio.
 
-## Comprobaciones de regresión y otros equipos
+## Datos y privacidad
 
-La siguiente lista sirve para repetir la validación al cambiar de equipo, bombillas, firmware o funciones. No representa una falla conocida del setup ya probado.
+La revisión para publicación no modifica los archivos personales de `data/` ni de `%LOCALAPPDATA%/WiZController`. Al primer inicio normal de 2.1, se importan los archivos válidos que falten del directorio anterior al persistente; los originales permanecen intactos. La migración se comprobó con fixtures aisladas en los tests; no se atribuye al usuario una prueba manual específica de migración.
 
-1. Ejecutar `main.py` normalmente con la PC y las bombillas en la misma red. Verificar que la primera consulta muestre las dos disponibles y que no se cambie su iluminación al iniciar sin escena seleccionada.
-2. Probar encendido, apagado, brillo mínimo/máximo, colores rápidos y selector RGB en cada canal; comprobar que el otro canal no cambie.
-3. Probar encendido, apagado, brillo y color globales. Comparar la vista previa aproximada con las luces y revisar cualquier mensaje de ajuste no confirmado.
-4. Aplicar las cinco escenas; validar especialmente soporte de 2700 K/4000 K y la tolerancia de los canales RGB/blanco del firmware. Los blancos requieren una bombilla con temperatura ajustable.
-5. Crear una escena con colores y brillo diferentes, incluyendo un canal apagado. Guardar, editar, aplicar y eliminar. Reiniciar y verificar que persistan las escenas y nombres guardados.
-6. Cambiar una luz desde la aplicación WiZ del celular y esperar una consulta automática (cada 12 segundos cuando está libre) o pulsar Reconectar.
-7. Desconectar una bombilla, enviar una orden y comprobar que la interfaz siga respondiendo y reporte el error. Reconectarla y verificar recuperación automática o mediante Reconectar.
-8. Mover sliders rápidamente, aplicar una escena durante una orden pendiente y cerrar durante un timeout. Comprobar la respuesta real del firmware y revisar `data/controller.log` si aparece un error.
-9. Cambiar una IP desde Settings, guardar y verificar la conexión con la nueva dirección. Configurar una escena de inicio y comprobar su aplicación al abrir de nuevo.
-10. Activar inicio con Windows desde Settings, cerrar sesión y entrar de nuevo. Desactivarlo y verificar que la entrada se retire. Esta comprobación modifica únicamente la entrada propia de inicio automático.
-11. Revisar selector de color nativo, escala de Windows/DPI, maximizado y desplazamiento en el monitor del setup. La captura de referencia está en `docs/dashboard.png`.
+Los ejemplos usan direcciones ficticias. Se revisaron los archivos públicos mediante búsquedas de patrones de credenciales, tokens, claves privadas, IP privadas y rutas del workspace; no se detectaron esos datos. El `.spec` usa recursos explícitos. Se inspeccionaron el contenido del paquete y las constantes del bytecode propio para comprobar que no incorporen las direcciones personales existentes.
 
-## Límites y siguiente fase
+`.gitignore` excluye entorno virtual, cachés, `data/`, logs, archivos de credenciales, `build/`, `dist/`, ejecutables y ZIP. Solo el código, los tests, los ejemplos anónimos, los recursos de la aplicación y la documentación se incluyen en la publicación del código.
 
-- Vista previa aproximada, sin calibración de pantalla ni sensor de color. Una confirmación acredita la respuesta del dispositivo; no mide físicamente la luz.
-- Las escenas aplican ajustes estáticos a dos canales, no efectos animados. Dos operaciones en paralelo no garantizan simultaneidad exacta a nivel de hardware.
-- Cada fase de red tiene timeout de 7 segundos; envío y lecturas de verificación pueden acumular más tiempo. La UI no espera esas operaciones en el hilo principal.
-- Las capturas guardan el último estado leído, no una suscripción en tiempo real. Efectos dinámicos activados desde otra app no se reproducen como animación al capturarlos.
-- OBS, atajos globales, bandeja y eventos del stream están pendientes. Se dejó una interfaz de adaptadores y una cola segura para solicitar escenas, sin instalar componentes ni alterar OBS.
-- Próxima fase: bandeja/atajos y finalmente obs-websocket optativo, con pruebas de regresión en hardware y otros firmwares.
+## Validación física y manual
+
+El usuario confirmó las siguientes pruebas manuales satisfactorias de **WiZ Controller 2.1 en Windows**:
+
+- Las dos bombillas WiZ conectan y responden.
+- Encendido, apagado, brillo, colores y escenas funcionan.
+- El ejecutable de Windows abre correctamente.
+- Los atajos globales fueron probados y funcionan.
+- La interfaz y el control de iluminación están estables.
+
+El protocolo de iluminación y las escenas incorporadas se conservaron. Esta confirmación corresponde al setup del usuario; no certifica otros modelos, firmwares o equipos. No se especificó la edición o versión de Windows de la validación manual.
+
+## Comprobaciones adicionales no confirmadas manualmente
+
+1. Recepción de atajos dentro de cada juego, en pantalla completa exclusiva, con anticheat o distintos permisos. Los tests nativos verifican el registro y `WM_HOTKEY`; la confirmación manual de atajos no especifica esos escenarios.
+2. Inicio real después de cerrar sesión/reiniciar Windows, tanto con Python como con el paquete, y desactivación posterior desde Settings.
+3. Comportamiento de la bandeja con Explorer reiniciado, íconos ocultos, suspensión/reanudación y desconexiones reales de la red. La bandeja tiene pruebas automatizadas nativas, pero no se informó una validación manual específica de estos casos.
+4. Migración manual de datos, recuperación de configuraciones inválidas y paquete completo en otro equipo Windows sin Python.
+5. Compatibilidad general con Windows 11: las pruebas de desarrollo se hicieron en Windows 10 x64 y la confirmación manual del usuario no especifica versión.
+
+La vista previa sigue siendo aproximada; una confirmación acredita la respuesta del dispositivo y no una medición de luz. No hay OBS ni eventos de streaming en esta versión. Bandeja y atajos funcionan de forma independiente de esa futura fase.

@@ -1,8 +1,9 @@
 """Optional integration port; the dashboard has no OBS dependency."""
-from pathlib import Path
 import subprocess
 import sys
 from typing import Callable, Protocol
+
+from .paths import launch_arguments
 
 
 class Integration(Protocol):
@@ -20,11 +21,7 @@ class WindowsAutostart:
 
     @staticmethod
     def command():
-        executable = Path(sys.executable)
-        pythonw = executable.with_name("pythonw.exe")
-        if pythonw.exists():
-            executable = pythonw
-        return subprocess.list2cmdline([str(executable), str(Path(__file__).resolve().parent.parent / "main.py")])
+        return subprocess.list2cmdline(launch_arguments(background=True))
 
     @classmethod
     def enabled(cls):
@@ -34,7 +31,7 @@ class WindowsAutostart:
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, cls.KEY) as key:
                 value, _ = winreg.QueryValueEx(key, cls.VALUE)
-                return value == cls.command()
+                return isinstance(value, str) and bool(value)
         except FileNotFoundError:
             return False
 
